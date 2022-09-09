@@ -1,0 +1,66 @@
+clc
+clear all;
+
+%% code
+
+for year_i = [2015:2015]
+    
+    
+    daynum = days(datetime(year_i,12,31) - datetime(year_i,1,1) + 1);
+    doys = 1:daynum;
+    load(['../../../MODIS/daily_data/MODSCAG_daily_' num2str(year_i) '.mat']);
+    ELM_melt_of_snow = nan(144, 168);
+    ELM_midpoint_of_snow = nan(144, 168);
+    
+    % 32 85
+    for row_i = 32:32
+        for col_j = 85:85
+            BSAs_daily2 = squeeze(fsnos_daily(row_i, col_j, :));
+            
+            
+            opts = fitoptions( 'Method', 'NonlinearLeastSquares');
+            ft =  fittype('a+b/(1 + exp(c*(x-d)))'); %fit function
+            x = doys(32:243)';
+            y = BSAs_daily2(32:243);
+            filter = y>=0;
+            if(sum(filter)>30)
+                [mdl,gof,out] = fit(x(filter),y(filter),ft, 'StartPoint', [0, 1, 0.2, 100],'Lower',[0,0,0,32],'Upper',[1,1,1,243]);
+                estimates = mdl(32:243);
+                
+                if((gof.rsquare > 0.95) && (gof.rmse < 0.2) && ((estimates(1) - estimates(end))>0.05))
+                    
+                    dif_tmp = abs((estimates(1) - estimates(212))*0.99 + estimates(212) - estimates);
+                    snowmelt_doy = find(dif_tmp == min(dif_tmp), 1)+31;
+                    
+                    ELM_melt_of_snow(row_i, col_j) = snowmelt_doy;
+                    ELM_midpoint_of_snow(row_i, col_j) = mdl.d;
+                    
+                    figure;
+                    set(gcf,'unit','normalized','position',[0.1,0.1,0.8,0.5]);
+                    set(gca, 'Position', [0.07 0.15 0.9 0.8])
+                    hold on
+                    scatter(x, y,'o','MarkerFaceColor',[0.5 0.5 0.5],'MarkerEdgeColor',[0 0 0],'MarkerFaceAlpha',0.5,'MarkerEdgeAlpha',0.5,'Linewidth',1)
+                    plot(x, estimates,'-r','linewidth',6,'color',[0.8500 0.3250 0.0980 1])
+                    plot([snowmelt_doy snowmelt_doy], [0 1],'-','linewidth',4,'color',[0 0 1 0.4])
+                    plot([mdl.d mdl.d], [0 1],'-','linewidth',4,'color',[0 0 1 0.4])
+                    text(snowmelt_doy+2, 0.9, 'SMOD','fontsize',14,'fontweight','bold');
+                    text(mdl.d+2, 0.9, 'SMD','fontsize',14,'fontweight','bold');
+                    
+                    ylabel('{\it f}_{sno}')
+                    xlabel('DOY')
+                    xlim([32 243])
+                    ylim([0 1])
+                    
+                    box on
+                    set(gca,'linewidth',1,'fontsize',14)
+                    
+                    print(gcf, '-dtiff', '-r300', 'different_snow_end_date.tif')
+
+                    close all
+                end
+                
+            end
+        end
+    end
+end
+
